@@ -7,6 +7,14 @@ $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `
 $lnk.WindowStyle = 7  # minimized
 $lnk.Save()
 
+# Power agent: MQTT shutdown/hibernate/sleep, runs at every logon (no window)
+python -m pip install --user --quiet paho-mqtt
+$lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Power Agent.lnk")
+$lnk.TargetPath = (Get-Command pythonw).Source
+$lnk.Arguments = "`"$PSScriptRoot\power-agent.pyw`""
+$lnk.WorkingDirectory = $PSScriptRoot
+$lnk.Save()
+
 # RustDesk as a Windows service: starts at boot, works on the lock screen (UAC prompt)
 Start-Process 'C:\Program Files\RustDesk\RustDesk.exe' -ArgumentList '--install-service' -Verb RunAs -Wait
 
