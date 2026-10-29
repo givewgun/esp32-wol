@@ -251,3 +251,19 @@ deps/behaviour, how deploy works, which secrets exist.
    either allow it (each server = one pre-created session, which matches "start a new session") or block it and tell
    the owner to open a new chat in claude.ai/code. Prefer allowing it if it works cleanly.
 4. **Process cwd read** via psutil for `claude.exe` under the same user should work; confirm.
+
+### Spike results (2026-10-30, Claude Code 2.1.312, psutil 7.2.2)
+
+1. **Trust:** no prompt and no hang in a never-opened subfolder. `~/.claude.json` has `C:/Users/gunka/workspace`
+   trusted and no entry was created for the subfolder, so the parent's trust covers it. No pre-trust code needed.
+2. **Permission mode:** the pre-created session's child process is spawned with the server's `--permission-mode`
+   (seen in its argv), so the mode applies to it.
+3. **Two servers in one folder: refused by Claude Code**, which prints "This folder is already served by a terminal
+   `claude remote-control` on this device. Stop it first." and exits. Ruling: the agent refuses `start` for a folder
+   that already has a server (`"already running"`), and the UI says to open a new chat for that folder in
+   claude.ai/code, or stop the server and start it again to change the mode.
+4. **Process shapes:** server = `C:\Users\gunka\.local\bin\claude.exe remote-control [flags]`, cwd readable via psutil.
+   Each chat is a child `claude.exe --print --sdk-url ... --session-id cse_... --permission-mode <mode> ...`.
+   The VS Code extension runs its own `claude.exe` (from `.vscode\extensions\...`) and the **Claude desktop app is
+   also `Claude.exe`** (under `WindowsApps`), so matching must use `argv[1] == "remote-control"`, never the name
+   alone. Killing the server's process tree (children first) cleanly stops it and its chats.
