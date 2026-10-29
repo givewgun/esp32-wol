@@ -6,3 +6,5 @@ firmware/dependencies.lock
 firmware/sdkconfig
 firmware/sdkconfig.old
 pc/power-agent.log
+__pycache__/
+.pytest_cache/
