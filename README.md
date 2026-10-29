@@ -34,6 +34,7 @@ TLS uses the IDF certificate bundle (EMQX chains to DigiCert Global Root G2), so
 1. Run `claude` once in `%USERPROFILE%\workspace` and accept the workspace trust prompt.
 2. Run `pc\setup.ps1`: adds the logon startup shortcut, installs RustDesk as a service (UAC prompt).
 3. Auto-login: `winget install Microsoft.Sysinternals.Autologon`, run `Autologon`, enter your Windows password, Enable.
+   Microsoft account: username = account email, **domain empty**, password = account password (not PIN).
    With a Microsoft account, turn off *Settings > Accounts > Sign-in options > "Only allow Windows Hello sign-in"* first.
 4. Already done: Wake-on-LAN in BIOS + NIC, Fast Startup off.
 
