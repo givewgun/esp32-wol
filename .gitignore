@@ -8,3 +8,4 @@ firmware/sdkconfig.old
 pc/power-agent.log
 __pycache__/
 .pytest_cache/
+pc/agent-secret.txt
