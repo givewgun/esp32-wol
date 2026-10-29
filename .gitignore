@@ -1,0 +1,7 @@
+firmware/main/secrets.h
+.vscode/
+firmware/build/
+firmware/managed_components/
+firmware/dependencies.lock
+firmware/sdkconfig
+firmware/sdkconfig.old
