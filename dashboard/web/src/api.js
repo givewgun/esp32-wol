@@ -6,19 +6,35 @@ export function isStale(stats, pcStatus, nowMs) {
   return pcStatus !== 'online' || !stats || nowMs / 1000 - stats.ts > STALE_S;
 }
 
-// Live snapshot over SSE. EventSource reconnects by itself after network drops; if the stream is closed for good
-// (e.g. the Cloudflare Access session expired) `lost` turns true and the page offers a reload to sign in again.
+// Live snapshot over SSE. EventSource retries plain network drops itself, but closes for good on an HTTP error
+// (a 502 during a deploy, or 401 once the Access session expires). Then `lost` turns true, the page offers a reload
+// (to sign in again), and we reopen the stream ourselves with backoff (2 s doubling to 30 s).
 export function useSnapshot() {
   const [snap, setSnap] = useState(null);
   const [lost, setLost] = useState(false);
   useEffect(() => {
-    const es = new EventSource('/api/events');
-    es.onmessage = (e) => {
-      setSnap(JSON.parse(e.data));
-      setLost(false);
+    let es;
+    let timer;
+    let delay = 2000;
+    const open = () => {
+      es = new EventSource('/api/events');
+      es.onmessage = (e) => {
+        setSnap(JSON.parse(e.data));
+        setLost(false);
+        delay = 2000;
+      };
+      es.onerror = () => {
+        if (es.readyState !== EventSource.CLOSED) return;
+        setLost(true);
+        timer = setTimeout(open, delay);
+        delay = Math.min(delay * 2, 30_000);
+      };
     };
-    es.onerror = () => setLost(es.readyState === EventSource.CLOSED);
-    return () => es.close();
+    open();
+    return () => {
+      clearTimeout(timer);
+      es.close();
+    };
   }, []);
   return { snap, lost };
 }

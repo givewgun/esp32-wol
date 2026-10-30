@@ -80,7 +80,7 @@ Phone/laptop page to watch the PC, send power commands, and start/stop Claude Co
 - **Sessions:** every running `claude remote-control`, including the boot-time one; Stop kills that server and its chats.
 - **Security:** Cloudflare Access (one-time PIN, owner's email only) in front; the server also verifies the Access
   JWT on every `/api` call. Session commands are HMAC-signed with `PC_CMD_SECRET` (VM and PC only), so the shared
-  MQTT login alone can't start anything. Pentest: `docs/superpowers/specs/2026-10-30-pc-dashboard-pentest.md`.
+  MQTT login alone can't start anything; the agent signs its replies too, so results can't be faked. Pentest: `docs/superpowers/specs/2026-10-30-pc-dashboard-pentest.md`.
 - **Code:** `dashboard/` (Express + React). `cd dashboard; npm ci; npm test; npm run build`.
 - **Deploy:** push to `main` touching `dashboard/**` runs `.github/workflows/dashboard.yml`: test, build, SSH to the
   Oracle VM, `/opt/pc-dash/app`, `docker compose -f dashboard/docker-compose.prod.yml up -d --build`. Container

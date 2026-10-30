@@ -12,7 +12,14 @@ SW_SHOWMINNOACTIVE = 7
 
 
 def claude_exe():
-    return shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude.exe")
+    # Only a real .exe: an npm claude.cmd would run through cmd.exe, which interprets & ^ % in folder names
+    native = Path.home() / ".local" / "bin" / "claude.exe"
+    if native.is_file():
+        return str(native)
+    found = shutil.which("claude")
+    if found and found.lower().endswith(".exe"):
+        return found
+    raise FileNotFoundError("claude.exe not found")
 
 
 def session_argv(claude, folder, mode):
@@ -63,11 +70,18 @@ def start_session(workspace: Path, folder, mode, popen=subprocess.Popen):
     si.wShowWindow = SW_SHOWMINNOACTIVE
     proc = popen(session_argv(claude_exe(), folder, mode), cwd=str(workspace / folder),
                  creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=si)
-    return proc.pid
+    try:
+        code = proc.wait(timeout=2)  # e.g. "folder is already served", bad flag, not logged in
+    except subprocess.TimeoutExpired:
+        return proc.pid  # still running: started
+    raise RuntimeError(f"claude exited with code {code}")
 
 
 def stop_session(pid):
-    root = psutil.Process(pid)
+    try:
+        root = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return  # already gone
     procs = root.children(recursive=True) + [root]  # chats first, then the server
     for p in procs:
         try:

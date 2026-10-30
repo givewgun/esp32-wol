@@ -47,13 +47,17 @@ export function createApp({ state, broker, verify, staticDir }) {
     });
   });
 
-  app.post('/api/power', (req, res) => {
-    broker.publishPower(validatePower(req.body));
-    res.status(202).json({ ok: true });
-  });
+  // mqtt.js would queue a command while disconnected and send it late, after the API already gave up
+  const requireBroker = (req, res, next) =>
+    broker.connected() ? next() : res.status(503).json({ error: 'dashboard is not connected to the broker' });
 
   const requireOnline = (req, res, next) =>
     state.snapshot().pc === 'online' ? next() : res.status(409).json({ error: 'PC is offline' });
+
+  app.post('/api/power', requireBroker, (req, res) => {
+    broker.publishPower(validatePower(req.body));
+    res.status(202).json({ ok: true });
+  });
 
   const command = (build) => async (req, res, next) => {
     try {
@@ -68,11 +72,13 @@ export function createApp({ state, broker, verify, staticDir }) {
 
   app.post(
     '/api/sessions',
+    requireBroker,
     requireOnline,
     command((req) => ({ action: 'start', ...validateStart(req.body, state.folderList()) })),
   );
   app.post(
     '/api/sessions/:pid/stop',
+    requireBroker,
     requireOnline,
     command((req) => ({ action: 'stop', pid: validatePid(req.params.pid, state.sessionList()) })),
   );

@@ -107,6 +107,14 @@ describe('app', () => {
     expect(broker.sendCommand).toHaveBeenCalledWith({ action: 'stop', pid: 77 });
   });
 
+  it('refuses commands with 503 while the broker is disconnected', async () => {
+    broker.connected = () => false;
+    expect((await post('/api/sessions', { folder: 'horizon', mode: 'plan' })).status).toBe(503);
+    expect((await post('/api/power', { action: 'wake' })).status).toBe(503);
+    expect(broker.sendCommand).not.toHaveBeenCalled();
+    expect(broker.publishPower).not.toHaveBeenCalled();
+  });
+
   it('reply error maps to 502', async () => {
     broker.sendCommand.mockResolvedValueOnce({ id: 'x', ok: false, error: 'already running' });
     const res = await post('/api/sessions', { folder: 'horizon', mode: 'plan' });

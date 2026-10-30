@@ -1,6 +1,6 @@
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import mqtt from 'mqtt';
-import { signCommand } from './sign.js';
+import { canonical, signCommand } from './sign.js';
 
 const SUBSCRIBE = [
   'wol/desktop/status',
@@ -11,6 +11,15 @@ const SUBSCRIBE = [
   'wol/desktop/pc/reply',
 ];
 const REPLY_TIMEOUT_MS = 10_000;
+
+// Replies are signed by the PC agent with the same key, so a broker-login holder can't fake a result
+function authentic(reply, secret) {
+  if (reply === null || typeof reply !== 'object' || typeof reply.sig !== 'string') return false;
+  const { sig, ...rest } = reply;
+  const want = createHmac('sha256', secret).update(canonical(rest), 'utf8').digest();
+  const got = Buffer.from(sig, 'hex');
+  return got.length === want.length && timingSafeEqual(got, want);
+}
 
 function defaultConnect({ uri, user, pass }) {
   return mqtt.connect(uri, {
@@ -40,7 +49,7 @@ export function connectBroker(config, state, { connect = defaultConnect } = {}) 
       return;
     }
     const waiter = pending.get(reply?.id);
-    if (waiter) waiter(reply);
+    if (waiter && authentic(reply, config.cmdSecret)) waiter(reply);
   });
 
   return {
