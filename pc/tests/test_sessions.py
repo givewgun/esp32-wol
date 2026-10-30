@@ -24,7 +24,8 @@ class FakeProc:
 
 def test_spawn_argv_passes_folder_as_single_name_element():
     argv = session_argv(CLAUDE, "-x; rm", "plan")
-    assert argv == [CLAUDE, "remote-control", "--name=-x; rm", "--permission-mode", "plan"]
+    # --spawn same-dir answers the spawn-mode prompt a git repo would otherwise show in the hidden console
+    assert argv == [CLAUDE, "remote-control", "--name=-x; rm", "--permission-mode", "plan", "--spawn", "same-dir"]
 
 
 def test_start_session_uses_cwd_and_new_console(tmp_path):
@@ -41,7 +42,8 @@ def test_start_session_uses_cwd_and_new_console(tmp_path):
 
     pid = start_session(tmp_path, "horizon", "acceptEdits", popen=Popen)
     assert pid == 4242
-    assert calls["argv"][1:] == ["remote-control", "--name=horizon", "--permission-mode", "acceptEdits"]
+    assert calls["argv"][1:] == ["remote-control", "--name=horizon", "--permission-mode", "acceptEdits",
+                                 "--spawn", "same-dir"]
     assert calls["kw"]["cwd"] == str(tmp_path / "horizon")
     assert calls["kw"]["creationflags"] & subprocess.CREATE_NEW_CONSOLE
     assert not calls["kw"].get("shell")

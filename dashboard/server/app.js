@@ -1,7 +1,14 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
-import { ValidationError, validatePid, validatePower, validateStart } from './validate.js';
+import {
+  ValidationError,
+  validateCreate,
+  validatePid,
+  validatePower,
+  validateStart,
+  validateTrust,
+} from './validate.js';
 
 const PING_MS = 25_000; // under Cloudflare's 100 s idle cutoff
 
@@ -12,6 +19,13 @@ function securityHeaders(req, res, next) {
     'Referrer-Policy': 'no-referrer',
   });
   next();
+}
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
 }
 
 export function createApp({ state, broker, verify, staticDir }) {
@@ -74,7 +88,23 @@ export function createApp({ state, broker, verify, staticDir }) {
     '/api/sessions',
     requireBroker,
     requireOnline,
-    command((req) => ({ action: 'start', ...validateStart(req.body, state.folderList()) })),
+    command((req) => {
+      const fields = validateStart(req.body, state.folderList());
+      if (!state.isTrusted(fields.folder)) throw new HttpError(409, 'folder not trusted');
+      return { action: 'start', ...fields };
+    }),
+  );
+  app.post(
+    '/api/folders/trust',
+    requireBroker,
+    requireOnline,
+    command((req) => ({ action: 'trust', ...validateTrust(req.body, state.folderList()) })),
+  );
+  app.post(
+    '/api/folders',
+    requireBroker,
+    requireOnline,
+    command((req) => ({ action: 'create', ...validateCreate(req.body, state.folderList()) })),
   );
   app.post(
     '/api/sessions/:pid/stop',
@@ -92,7 +122,7 @@ export function createApp({ state, broker, verify, staticDir }) {
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    if (err instanceof ValidationError) return res.status(400).json({ error: err.message });
+    if (err instanceof ValidationError || err instanceof HttpError) return res.status(err.status).json({ error: err.message });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'bad json' });
     if (err.type === 'entity.too.large') return res.status(413).json({ error: 'too large' });
     console.error(err);

@@ -16,7 +16,10 @@ function timeout() {
 beforeEach(() => {
   state = createState();
   state.apply('wol/desktop/pc', 'online');
-  state.apply('wol/desktop/pc/folders', '["horizon","blink"]');
+  state.apply(
+    'wol/desktop/pc/folders',
+    '[{"name":"horizon","trusted":true,"git":true},{"name":"blink","trusted":true,"git":false},{"name":"fresh","trusted":false,"git":true}]',
+  );
   state.apply('wol/desktop/pc/sessions', '{"ts":1,"sessions":[{"pid":77,"folder":"blink"}]}');
   broker = {
     connected: () => true,
@@ -113,6 +116,34 @@ describe('app', () => {
     expect((await post('/api/power', { action: 'wake' })).status).toBe(503);
     expect(broker.sendCommand).not.toHaveBeenCalled();
     expect(broker.publishPower).not.toHaveBeenCalled();
+  });
+
+  it('trust sends the folder to the PC', async () => {
+    expect((await post('/api/folders/trust', { folder: 'fresh' })).status).toBe(200);
+    expect(broker.sendCommand).toHaveBeenCalledWith({ action: 'trust', folder: 'fresh' });
+    expect((await post('/api/folders/trust', { folder: '..' })).status).toBe(400);
+  });
+
+  it('create maps git checkbox to init', async () => {
+    expect((await post('/api/folders', { folder: 'new-app', git: true })).status).toBe(200);
+    expect(broker.sendCommand).toHaveBeenCalledWith({ action: 'create', folder: 'new-app', init: 'git' });
+    expect((await post('/api/folders', { folder: 'a/b', git: true })).status).toBe(400);
+    expect(broker.sendCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('start refuses untrusted folders before asking the PC', async () => {
+    const res = await post('/api/sessions', { folder: 'fresh', mode: 'plan' });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'folder not trusted' });
+    expect(broker.sendCommand).not.toHaveBeenCalled();
+  });
+
+  it('folder routes need auth, json, broker and an online PC', async () => {
+    expect((await request(app).post('/api/folders').send({ folder: 'x', git: true })).status).toBe(401);
+    expect((await request(app).post('/api/folders/trust').set(JWT).type('form').send('folder=fresh')).status).toBe(415);
+    state.apply('wol/desktop/pc', 'offline');
+    expect((await post('/api/folders', { folder: 'x', git: true })).status).toBe(409);
+    expect(broker.sendCommand).not.toHaveBeenCalled();
   });
 
   it('reply error maps to 502', async () => {
