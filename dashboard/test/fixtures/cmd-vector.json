@@ -1,0 +1,12 @@
+{
+  "secret": "test-secret",
+  "cmd": {
+    "id": "0123456789abcdef0123456789abcdef",
+    "ts": 1767000000,
+    "action": "start",
+    "folder": "local-llm-server;C",
+    "mode": "bypassPermissions"
+  },
+  "canonical": "{\"action\":\"start\",\"folder\":\"local-llm-server;C\",\"id\":\"0123456789abcdef0123456789abcdef\",\"mode\":\"bypassPermissions\",\"ts\":1767000000}",
+  "sig": "9f0d154d3b35e3aa21c431b0e3cdd77416bf8edf6e8edcb77e6f76e541f452a0"
+}

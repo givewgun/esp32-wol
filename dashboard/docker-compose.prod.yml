@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    image: pc-dash:latest
+    container_name: pc-dash
+    restart: unless-stopped
+    # No host port. Public exposure is via the global Cloudflare Tunnel container on the `tunnel-gateway` network:
+    # pc.givewgun.com -> http://pc-dash:8080, behind Cloudflare Access.
+    expose:
+      - "8080"
+    networks:
+      - default
+      - tunnel-gateway
+    env_file:
+      - .env
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+  tunnel-gateway:
+    external: true

@@ -7,8 +7,16 @@ $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `
 $lnk.WindowStyle = 7  # minimized
 $lnk.Save()
 
-# Power agent: MQTT shutdown/hibernate/sleep, runs at every logon (no window)
-python -m pip install --user --quiet paho-mqtt
+# PC agent: MQTT power commands + dashboard (stats, Claude sessions), runs at every logon (no window)
+python -m pip install --user --quiet paho-mqtt psutil
+
+# Key for signed dashboard commands; the same value goes into the GitHub secret PC_CMD_SECRET
+$secretFile = Join-Path $PSScriptRoot 'agent-secret.txt'
+if (-not (Test-Path $secretFile)) {
+    $bytes = New-Object byte[] 32
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    -join ($bytes | ForEach-Object { $_.ToString('x2') }) | Set-Content -NoNewline -Encoding ascii $secretFile
+}
 $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Power Agent.lnk")
 $lnk.TargetPath = (Get-Command pythonw).Source
 $lnk.Arguments = "`"$PSScriptRoot\power-agent.pyw`""
