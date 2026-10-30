@@ -37,7 +37,7 @@ function isStats(v) {
 }
 
 function isFolders(v) {
-  return Array.isArray(v) && v.every(str);
+  return Array.isArray(v) && v.every((f) => obj(f) && str(f.name) && typeof f.trusted === 'boolean' && typeof f.git === 'boolean');
 }
 
 function isSessions(v) {
@@ -65,7 +65,8 @@ export function createState() {
     },
     snapshot: () => structuredClone(data),
     sessionList: () => (Array.isArray(data.sessions?.sessions) ? data.sessions.sessions : []),
-    folderList: () => data.folders,
+    folderList: () => data.folders.map((f) => f.name),
+    isTrusted: (name) => data.folders.some((f) => f.name === name && f.trusted),
     on: (event, fn) => emitter.on(event, fn),
     off: (event, fn) => emitter.off(event, fn),
   };

@@ -19,9 +19,9 @@ any browser -> pc.givewgun.com (Cloudflare Access) -> pc-dash on Oracle VM â”€â”
 | `wol/desktop/status` | `online` / `offline` (retained, LWT) | ESP32 publishes |
 | `wol/desktop/pc` | `online` / `offline` (retained, LWT) | PC power agent publishes |
 | `wol/desktop/pc/stats` | JSON: CPU, RAM, GPU, disks, uptime, `ts` (retained, every 5 s) | PC agent publishes |
-| `wol/desktop/pc/folders` | JSON array of `%USERPROFILE%\workspace` subfolders (retained) | PC agent publishes |
+| `wol/desktop/pc/folders` | JSON `[{name, trusted, git}]` for `%USERPROFILE%\workspace` subfolders (retained) | PC agent publishes |
 | `wol/desktop/pc/sessions` | JSON: running `claude remote-control` servers (retained) | PC agent publishes |
-| `wol/desktop/pc/cmd` | JSON `start` / `stop` / `refresh`, **HMAC-signed** (not retained) | dashboard publishes, PC agent acts |
+| `wol/desktop/pc/cmd` | JSON `start` / `stop` / `trust` / `create` / `refresh`, **HMAC-signed** (not retained) | dashboard publishes, PC agent acts |
 | `wol/desktop/pc/reply` | JSON `{id, ok, error?}` (not retained) | PC agent publishes |
 
 Retained messages on `wol/desktop` and `wol/desktop/pc/cmd` are ignored on purpose so a stale command can't fire on every reconnect.
@@ -77,6 +77,11 @@ Phone/laptop page to watch the PC, send power commands, and start/stop Claude Co
   the agent runs `claude remote-control --name=<folder> --permission-mode <mode>` there in a minimized console.
   Chat in claude.ai/code as usual. One server per folder (Claude Code's rule): open more chats for a running folder
   from claude.ai/code, or stop it and start again to change the mode.
+- **Trust:** Remote Control only runs in folders Claude Code trusts at that exact path (a trusted parent doesn't
+  count). Untrusted folders show `(untrusted)` and can't be started; **Trust folder** (two taps) sets
+  `hasTrustDialogAccepted` for that folder in `~/.claude.json`, same as answering the CLI prompt (backup:
+  `~/.claude.json.pc-agent.bak`). Sessions always start with `--spawn same-dir`, so no spawn-mode prompt either.
+- **New folder:** name (letters, digits, `- _ .`, max 64) + optional `git init`; created in workspace and trusted.
 - **Sessions:** every running `claude remote-control`, including the boot-time one; Stop kills that server and its chats.
 - **Security:** Cloudflare Access (one-time PIN, owner's email only) in front; the server also verifies the Access
   JWT on every `/api` call. Session commands are HMAC-signed with `PC_CMD_SECRET` (VM and PC only), so the shared

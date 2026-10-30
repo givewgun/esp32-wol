@@ -16,6 +16,7 @@ export default function App() {
     const res = await post(path, body);
     setBusy(false);
     setNotice(res.ok ? { ok: true, text: `${label}: done` } : { ok: false, text: `${label}: ${res.error}` });
+    return res;
   };
 
   if (!snap) {
@@ -46,6 +47,8 @@ export default function App() {
         online={online}
         busy={busy}
         onStart={(folder, mode) => run(`Start ${folder}`, '/api/sessions', { folder, mode })}
+        onTrust={(folder) => run(`Trust ${folder}`, '/api/folders/trust', { folder })}
+        onCreate={(folder, git) => run(`Create ${folder}`, '/api/folders', { folder, git })}
       />
     </main>
   );

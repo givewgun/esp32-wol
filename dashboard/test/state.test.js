@@ -11,30 +11,30 @@ describe('state', () => {
     s.apply('wol/desktop/status', 'online');
     s.apply('wol/desktop/pc', 'offline');
     s.apply('wol/desktop/pc/stats', '{"ts":1,"cpu_pct":1,"uptime_s":1,"host":"h","ram":{"used":1,"total":2},"gpu":null,"disks":[]}');
-    s.apply('wol/desktop/pc/folders', '["a"]');
+    s.apply('wol/desktop/pc/folders', '[{"name":"a","trusted":true,"git":false}]');
     s.apply('wol/desktop/pc/sessions', '{"ts":1,"sessions":[]}');
     expect(s.snapshot()).toEqual({
       esp: 'online',
       pc: 'offline',
       stats: JSON.parse('{"ts":1,"cpu_pct":1,"uptime_s":1,"host":"h","ram":{"used":1,"total":2},"gpu":null,"disks":[]}'),
-      folders: ['a'],
+      folders: [{ name: 'a', trusted: true, git: false }],
       sessions: { ts: 1, sessions: [] },
     });
   });
 
   it('ignores bad json and keeps the previous value', () => {
     const s = createState();
-    s.apply('wol/desktop/pc/folders', '["a"]');
+    s.apply('wol/desktop/pc/folders', '[{"name":"a","trusted":true,"git":false}]');
     s.apply('wol/desktop/pc/folders', 'not json');
     s.apply('wol/desktop/pc/folders', '{"not":"an array"}');
-    expect(s.snapshot().folders).toEqual(['a']);
+    expect(s.snapshot().folders).toEqual([{ name: 'a', trusted: true, git: false }]);
   });
 
   it('rejects hostile shapes from the shared broker login and keeps the last good value', () => {
     const s = createState();
     const stats = { ts: 1, cpu_pct: 1, uptime_s: 1, host: 'h', ram: { used: 1, total: 2 }, gpu: null, disks: [] };
     s.apply('wol/desktop/pc/stats', JSON.stringify(stats));
-    s.apply('wol/desktop/pc/folders', '["a"]');
+    s.apply('wol/desktop/pc/folders', '[{"name":"a","trusted":true,"git":false}]');
     s.apply('wol/desktop/pc/sessions', '{"ts":1,"sessions":[{"pid":5,"folder":"a","name":null,"mode":null,"started":1}]}');
     const good = s.snapshot();
     for (const [topic, payload] of [
@@ -45,6 +45,9 @@ describe('state', () => {
       ['wol/desktop/pc/stats', JSON.stringify({ ...stats, gpu: { name: 'x' } })],
       ['wol/desktop/pc/folders', '[{}]'],
       ['wol/desktop/pc/folders', '[1]'],
+      ['wol/desktop/pc/folders', '["a"]'],
+      ['wol/desktop/pc/folders', '[{"name":"a","trusted":"yes","git":false}]'],
+      ['wol/desktop/pc/folders', '[{"name":{},"trusted":true,"git":false}]'],
       ['wol/desktop/pc/sessions', '{"sessions":"x"}'],
       ['wol/desktop/pc/sessions', '{"ts":1,"sessions":[{"folder":"a"}]}'],
       ['wol/desktop/pc/sessions', '{"ts":1,"sessions":[{"pid":5,"folder":{}}]}'],
@@ -81,6 +84,10 @@ describe('state', () => {
 
   it('exposes session list and folder list helpers', () => {
     const s = createState();
+    s.apply('wol/desktop/pc/folders', '[{"name":"a","trusted":true,"git":false},{"name":"b","trusted":false,"git":true}]');
+    expect(s.folderList()).toEqual(['a', 'b']);
+    expect(s.isTrusted('a')).toBe(true);
+    expect(s.isTrusted('b')).toBe(false);
     expect(s.sessionList()).toEqual([]);
     s.apply('wol/desktop/pc/sessions', '{"ts":1,"sessions":[{"pid":5,"folder":"a"}]}');
     expect(s.sessionList()).toEqual([{ pid: 5, folder: 'a' }]);

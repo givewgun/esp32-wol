@@ -24,7 +24,8 @@ def claude_exe():
 
 def session_argv(claude, folder, mode):
     # --name=<folder> as one element: a folder name can never be read as a separate flag
-    return [claude, "remote-control", f"--name={folder}", "--permission-mode", mode]
+    # --spawn same-dir: a git repo would otherwise ask same-dir/worktree in the (hidden) console
+    return [claude, "remote-control", f"--name={folder}", "--permission-mode", mode, "--spawn", "same-dir"]
 
 
 def _flag(cmdline, name):

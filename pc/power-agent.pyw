@@ -14,11 +14,12 @@ from urllib.parse import urlparse
 import paho.mqtt.client as mqtt
 
 from pcagent.commands import CommandHandler
-from pcagent.folders import list_folders
+from pcagent.folders import folder_info
 from pcagent.logfile import append_log
 from pcagent.power import PowerHandler
 from pcagent.sessions import scan_sessions
 from pcagent.stats import collect_stats
+from pcagent.trust import trusted_keys
 
 TOPIC_CMD = "wol/desktop"          # same topic as "wake"; the ESP32 handles that one
 TOPIC_STATUS = "wol/desktop/pc"    # retained "online"/"offline" (LWT)
@@ -118,7 +119,7 @@ def publish_state(client):
         # Heartbeat: heals a stale "offline" (LWT, or a queued goodbye resent after resume) within one tick
         client.publish(TOPIC_STATUS, "online", qos=1, retain=True)
     client.publish(TOPIC_STATS, json.dumps(collect_stats(now)), qos=0, retain=True)
-    publish_if_changed(client, TOPIC_FOLDERS, json.dumps(list_folders(WORKSPACE)))
+    publish_if_changed(client, TOPIC_FOLDERS, json.dumps(folder_info(WORKSPACE, trusted_keys())))
     sessions = scan_sessions(WORKSPACE)
     if last.get("sessions") != sessions:
         client.publish(TOPIC_SESSIONS, json.dumps({"ts": now, "sessions": sessions}), qos=1, retain=True)
