@@ -81,3 +81,35 @@ describe('web', () => {
     expect(screen.getAllByText(evil, { exact: false }).length).toBeGreaterThan(0);
   });
 });
+
+describe('useSnapshot', () => {
+  it('reopens the stream with backoff after it closes', async () => {
+    vi.useFakeTimers();
+    const instances = [];
+    class FakeES {
+      static CLOSED = 2;
+      constructor() {
+        this.readyState = 0;
+        instances.push(this);
+      }
+      close() {
+        this.readyState = 2;
+      }
+    }
+    vi.stubGlobal('EventSource', FakeES);
+    const { renderHook, act } = await import('@testing-library/react');
+    const { useSnapshot } = await import('../web/src/api.js');
+    const { result } = renderHook(() => useSnapshot());
+    act(() => {
+      instances[0].readyState = 2;
+      instances[0].onerror();
+    });
+    expect(result.current.lost).toBe(true);
+    act(() => vi.advanceTimersByTime(2000));
+    expect(instances.length).toBe(2);
+    act(() => instances[1].onmessage({ data: '{"pc":"online"}' }));
+    expect(result.current).toEqual({ snap: { pc: 'online' }, lost: false });
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+});

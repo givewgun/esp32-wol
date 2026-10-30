@@ -43,7 +43,7 @@ def test_start_ok_returns_pid(env):
 def test_start_unknown_folder(env, folder):
     handler, calls = env
     reply = handler.handle(msg(action="start", folder=folder, mode="plan"))
-    assert reply == {"id": reply["id"], "ok": False, "error": "unknown folder"}
+    assert {k: v for k, v in reply.items() if k != "sig"} == {"id": reply["id"], "ok": False, "error": "unknown folder"}
     assert calls["start"] == []
 
 
@@ -109,3 +109,54 @@ def test_dry_run_does_not_spawn(env, tmp_path):
                              scan=lambda ws: [], clock=lambda: NOW, dry_run=True)
     assert handler.handle(msg(action="start", folder="horizon", mode="plan"))["ok"] is True
     assert calls["start"] == []
+
+
+def test_replies_are_signed(env):
+    handler, _ = env
+    reply = handler.handle(msg(action="refresh"))
+    assert reply["sig"] == sign(reply, SECRET)
+    bad = handler.handle(msg(action="start", folder="..", mode="plan"))
+    assert bad["sig"] == sign(bad, SECRET)
+
+
+def test_commands_signed_before_agent_start_rejected(tmp_path):
+    handler = CommandHandler(SECRET, tmp_path, scan=lambda ws: [], clock=lambda: NOW + 30)
+    assert handler.handle(msg(action="refresh"))["error"].startswith("stale")
+
+
+def test_stale_error_shows_both_clocks(env):
+    handler, _ = env
+    cmd = {"id": "f" * 32, "ts": NOW - 120, "action": "refresh"}
+    cmd["sig"] = sign(cmd, SECRET)
+    err = handler.handle(json.dumps(cmd).encode())["error"]
+    assert err.startswith("stale") and str(NOW) in err and str(NOW - 120) in err
+
+
+def test_already_running_ignores_case(env):
+    handler, calls = env
+    assert handler.handle(msg(action="start", folder="blink", mode="plan"))["error"] == "already running"
+    handler.scan = lambda ws: [{"pid": 9, "folder": "HORIZON", "name": None, "mode": None, "started": 1}]
+    assert handler.handle(msg(action="start", folder="horizon", mode="plan"))["error"] == "already running"
+
+
+def test_start_failure_reported(env):
+    handler, _ = env
+    handler.start = lambda ws, f, m: (_ for _ in ()).throw(RuntimeError("claude exited with code 1"))
+    assert handler.handle(msg(action="start", folder="horizon", mode="plan"))["error"] == "claude exited with code 1"
+
+
+def test_stop_access_denied_reported(env):
+    import psutil
+    handler, _ = env
+    handler.stop = lambda pid: (_ for _ in ()).throw(psutil.AccessDenied(pid))
+    assert handler.handle(msg(action="stop", pid=77))["error"] == "access denied"
+
+
+@pytest.mark.parametrize("folder", ["my project", "-leading", "café", "local-llm-server;C", "a&b^c%d"])
+def test_start_odd_but_real_folder_names(tmp_path, folder):
+    (tmp_path / folder).mkdir()
+    started = []
+    handler = CommandHandler(SECRET, tmp_path, start=lambda ws, f, m: started.append(f) or 1,
+                             scan=lambda ws: [], clock=lambda: NOW)
+    assert handler.handle(msg(action="start", folder=folder, mode="plan"))["ok"] is True
+    assert started == [folder]

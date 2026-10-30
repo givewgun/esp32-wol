@@ -5,7 +5,7 @@ firmware/managed_components/
 firmware/dependencies.lock
 firmware/sdkconfig
 firmware/sdkconfig.old
-pc/power-agent.log
+pc/power-agent.log*
 __pycache__/
 .pytest_cache/
 pc/agent-secret.txt

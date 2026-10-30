@@ -15,6 +15,7 @@ import paho.mqtt.client as mqtt
 
 from pcagent.commands import CommandHandler
 from pcagent.folders import list_folders
+from pcagent.logfile import append_log
 from pcagent.power import PowerHandler
 from pcagent.sessions import scan_sessions
 from pcagent.stats import collect_stats
@@ -35,9 +36,8 @@ DRY_RUN = "--dry-run" in sys.argv
 
 
 def log(msg):
-    # pythonw has no console; keep a small log next to the script
-    with open(Path(__file__).with_suffix(".log"), "a", encoding="utf-8") as f:
-        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+    # pythonw has no console; keep a small rotating log next to the script
+    append_log(Path(__file__).with_suffix(".log"), msg)
     if sys.stdout:
         print(msg, flush=True)
 

@@ -18,6 +18,10 @@ function fakeClient() {
 
 afterEach(() => vi.useRealTimers());
 
+function signedReply(reply) {
+  return { ...reply, sig: createHmac('sha256', 'k').update(canonical(reply)).digest('hex') };
+}
+
 describe('broker', () => {
   it('subscribes to the dashboard topics on connect', () => {
     const client = fakeClient();
@@ -56,9 +60,30 @@ describe('broker', () => {
     expect(client.published[0].opts).toEqual({ qos: 1, retain: false });
     const { sig, ...rest } = sent;
     expect(sig).toBe(createHmac('sha256', 'k').update(canonical(rest)).digest('hex'));
-    client.emit('message', 'wol/desktop/pc/reply', Buffer.from(JSON.stringify({ id: 'other', ok: false })));
-    client.emit('message', 'wol/desktop/pc/reply', Buffer.from(JSON.stringify({ id: sent.id, ok: true })));
-    await expect(pending).resolves.toEqual({ id: sent.id, ok: true });
+    client.emit('message', 'wol/desktop/pc/reply', Buffer.from(JSON.stringify(signedReply({ id: 'other', ok: false }))));
+    const reply = signedReply({ id: sent.id, ok: true });
+    client.emit('message', 'wol/desktop/pc/reply', Buffer.from(JSON.stringify(reply)));
+    await expect(pending).resolves.toEqual(reply);
+  });
+
+  it('ignores unsigned or forged replies', async () => {
+    vi.useFakeTimers();
+    const client = fakeClient();
+    const pending = connectBroker(config, createState(), { connect: () => client }).sendCommand({ action: 'refresh' });
+    const { id } = JSON.parse(client.published[0].payload);
+    client.emit('message', 'wol/desktop/pc/reply', Buffer.from(JSON.stringify({ id, ok: false, error: 'fake' })));
+    client.emit('message', 'wol/desktop/pc/reply', Buffer.from(JSON.stringify({ id, ok: true, sig: '0'.repeat(64) })));
+    const forged = signedReply({ id, ok: true });
+    forged.ok = false;
+    client.emit('message', 'wol/desktop/pc/reply', Buffer.from(JSON.stringify(forged)));
+    vi.advanceTimersByTime(10_000);
+    await expect(pending).rejects.toMatchObject({ name: 'TimeoutError' });
+  });
+
+  it('matches python reply signatures (booleans included)', () => {
+    // pc/pcagent/commands.py signs replies with sign(reply, secret); json.dumps renders True as true
+    const reply = { id: 'a'.repeat(32), ok: false, error: 'unknown folder' };
+    expect(canonical(reply)).toBe('{"error":"unknown folder","id":"' + 'a'.repeat(32) + '","ok":false}');
   });
 
   it('times out after 10 s without a reply', async () => {

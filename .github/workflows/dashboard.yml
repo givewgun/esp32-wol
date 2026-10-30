@@ -90,15 +90,15 @@ jobs:
 
             # .env is regenerated from GitHub Secrets (the source of truth) on every deploy
             sudo tee dashboard/.env > /dev/null <<EOF
-            NODE_ENV=production
-            PORT=8080
-            MQTT_URI=${MQTT_URI}
-            MQTT_USER=${MQTT_USER}
-            MQTT_PASS=${MQTT_PASS}
-            CF_ACCESS_TEAM_DOMAIN=${CF_ACCESS_TEAM_DOMAIN}
-            CF_ACCESS_AUD=${CF_ACCESS_AUD}
-            ALLOWED_EMAIL=${ALLOWED_EMAIL}
-            PC_CMD_SECRET=${PC_CMD_SECRET}
+            NODE_ENV='production'
+            PORT='8080'
+            MQTT_URI='${MQTT_URI}'
+            MQTT_USER='${MQTT_USER}'
+            MQTT_PASS='${MQTT_PASS}'
+            CF_ACCESS_TEAM_DOMAIN='${CF_ACCESS_TEAM_DOMAIN}'
+            CF_ACCESS_AUD='${CF_ACCESS_AUD}'
+            ALLOWED_EMAIL='${ALLOWED_EMAIL}'
+            PC_CMD_SECRET='${PC_CMD_SECRET}'
             EOF
             sudo chmod 600 dashboard/.env
 
