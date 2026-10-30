@@ -11,7 +11,7 @@ $lnk.Save()
 python -m pip install --user --quiet paho-mqtt psutil
 
 # Key for signed dashboard commands; the same value goes into the GitHub secret PC_CMD_SECRET
-$secretFile = "$PSScriptRootgent-secret.txt"
+$secretFile = Join-Path $PSScriptRoot 'agent-secret.txt'
 if (-not (Test-Path $secretFile)) {
     $bytes = New-Object byte[] 32
     [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)

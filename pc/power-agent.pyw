@@ -15,6 +15,7 @@ import paho.mqtt.client as mqtt
 
 from pcagent.commands import CommandHandler
 from pcagent.folders import list_folders
+from pcagent.power import PowerHandler
 from pcagent.sessions import scan_sessions
 from pcagent.stats import collect_stats
 
@@ -67,6 +68,7 @@ ACTIONS = {
 
 cmd_secret = read_cmd_secret()
 handler = CommandHandler(cmd_secret, WORKSPACE, dry_run=DRY_RUN) if cmd_secret else None
+power = None  # PowerHandler, set in main() once the client exists
 last = {}  # topic -> last published payload, so folders/sessions only go out when they change
 
 
@@ -81,18 +83,6 @@ def on_connect(client, userdata, flags, reason_code, properties):
     last.clear()  # republish everything after a reconnect
     client.subscribe([(TOPIC_CMD, 1), (TOPIC_DASH_CMD, 1)])
     client.publish(TOPIC_STATUS, "online", qos=1, retain=True)
-
-
-def on_power(client, cmd):
-    action = ACTIONS.get(cmd)
-    if action is None:
-        return  # "wake" and anything else is not for us
-    log(f"Command: {cmd}{' (dry run)' if DRY_RUN else ''}")
-    if DRY_RUN:
-        return
-    # Say goodbye first: the LWT would only fire after the keepalive times out
-    client.publish(TOPIC_STATUS, "offline", qos=1, retain=True).wait_for_publish(5)
-    action()
 
 
 def on_dashboard(client, payload):
@@ -113,7 +103,9 @@ def on_message(client, userdata, msg):
         return
     try:
         if msg.topic == TOPIC_CMD:
-            on_power(client, msg.payload.decode(errors="replace"))
+            cmd = msg.payload.decode(errors="replace")
+            if power.handle(cmd):
+                log(f"Command: {cmd}{' (dry run)' if DRY_RUN else ''}")
         elif msg.topic == TOPIC_DASH_CMD:
             on_dashboard(client, msg.payload)
     except Exception as e:  # never let one bad message kill the network thread
@@ -122,6 +114,9 @@ def on_message(client, userdata, msg):
 
 def publish_state(client):
     now = int(time.time())
+    if not power.going_down:
+        # Heartbeat: heals a stale "offline" (LWT, or a queued goodbye resent after resume) within one tick
+        client.publish(TOPIC_STATUS, "online", qos=1, retain=True)
     client.publish(TOPIC_STATS, json.dumps(collect_stats(now)), qos=0, retain=True)
     publish_if_changed(client, TOPIC_FOLDERS, json.dumps(list_folders(WORKSPACE)))
     sessions = scan_sessions(WORKSPACE)
@@ -139,6 +134,9 @@ def main():
     client.username_pw_set(user, password)
     client.tls_set()  # Windows root store, same DigiCert chain the ESP32 trusts
     client.will_set(TOPIC_STATUS, "offline", qos=1, retain=True)
+    global power
+    power = PowerHandler(ACTIONS, lambda status: client.publish(TOPIC_STATUS, status, qos=1, retain=True),
+                         dry_run=DRY_RUN)
     client.on_connect = on_connect
     client.on_message = on_message
     client.reconnect_delay_set(min_delay=1, max_delay=60)
