@@ -1,112 +1,74 @@
 # esp32-wol
 
-Wake the home PC from anywhere and have it ready for remote AI work (Claude Code + Codex).
+Wake your home PC from anywhere with a $5 ESP32, and have it come up ready for remote work.
+
+Tap **Wake** on your phone. An ESP32 on your home network gets the message through a cloud MQTT broker and sends a
+Wake-on-LAN magic packet to the PC. The PC boots, logs in, starts your remote tools (Claude Code Remote Control,
+Codex, RustDesk) and locks the screen. When you're done, tap **Sleep**, **Hibernate** or **Shutdown**.
+
+No port forwarding, no VPN, no always-on PC, no inbound connections to your home network. Everything talks *out* to
+the broker over TLS.
 
 ```
-phone (IoT MQTT Panel) ──"wake"──> EMQX Cloud (TLS 8883) ──> ESP32 at home ──magic packet──> PC
-PC boots -> auto-login -> start-remote.ps1 -> Claude Code remote-control + Codex app -> lock screen
-phone ──"shutdown"/"hibernate"/"sleep"──> EMQX Cloud ──> power-agent.pyw on the PC
-work laptop -> claude.ai/code (Claude)  |  phone -> ChatGPT app (Codex)  |  RustDesk (desktop)
-any browser -> pc.givewgun.com (Cloudflare Access) -> pc-dash on Oracle VM ──MQTT──> PC agent: stats, power, Claude sessions
+phone ──"wake"──> MQTT broker (TLS 8883) ──> ESP32 at home ──magic packet──> PC
+PC boots -> auto-login -> start-remote.ps1 -> Claude Code remote-control + Codex + RustDesk -> lock screen
+phone ──"sleep" / "hibernate" / "shutdown"──> broker ──> PC agent on the PC
+browser ──> dashboard (optional, behind Cloudflare Access) ──MQTT──> PC agent: stats, power, Claude Code sessions
 ```
 
-## MQTT topics
+## What you get
 
-| Topic | Payload | Who |
+| Part | What it does | Needed? |
 |---|---|---|
-| `wol/desktop` | `wake` (QoS 1, **not retained**) | phone publishes, ESP32 sends magic packet |
-| `wol/desktop` | `shutdown` / `hibernate` / `sleep` (QoS 1, **not retained**) | phone publishes, PC power agent acts |
-| `wol/desktop/status` | `online` / `offline` (retained, LWT) | ESP32 publishes |
-| `wol/desktop/pc` | `online` / `offline` (retained, LWT) | PC power agent publishes |
-| `wol/desktop/pc/stats` | JSON: CPU, RAM, GPU, disks, uptime, `ts` (retained, every 5 s) | PC agent publishes |
-| `wol/desktop/pc/folders` | JSON `[{name, trusted, git}]` for `%USERPROFILE%\workspace` subfolders (retained) | PC agent publishes |
-| `wol/desktop/pc/sessions` | JSON: running `claude remote-control` servers (retained) | PC agent publishes |
-| `wol/desktop/pc/cmd` | JSON `start` / `stop` / `trust` / `create` / `refresh`, **HMAC-signed** (not retained) | dashboard publishes, PC agent acts |
-| `wol/desktop/pc/reply` | JSON `{id, ok, error?}` (not retained) | PC agent publishes |
+| **ESP32 firmware** (`firmware/`) | Listens for `wake`, sends the magic packet, reports `online`/`offline` | Yes |
+| **Phone panel** (any MQTT app) | Wake/sleep/hibernate/shutdown buttons, ESP32 + PC status lights | Yes, or any MQTT client |
+| **PC agent** (`pc/`) | Sleep/hibernate/shutdown on command, startup script, live stats for the dashboard | Optional (wake works without it) |
+| **Dashboard** (`dashboard/`) | Web page: PC health, power buttons, start/stop Claude Code sessions in any project folder | Optional |
 
-Retained messages on `wol/desktop` and `wol/desktop/pc/cmd` are ignored on purpose so a stale command can't fire on every reconnect.
-A power command sent while the PC is already off or asleep is dropped, not replayed on the next wake.
+Start with the ESP32 and a phone panel. That alone gives you remote wake. Add the PC agent for remote power-off, and
+the dashboard if you want a browser UI and one-tap Claude Code sessions.
 
-## Firmware (ESP-IDF v6.1, classic ESP32)
+## Requirements
+
+- **ESP32** (classic ESP32 dev board; 2 MB flash is enough) on the same LAN as the PC, on **2.4 GHz** Wi-Fi.
+- **PC** with Wake-on-LAN support, **wired Ethernet** (Wi-Fi WoL is unreliable), Windows 10/11 for the PC agent.
+- **MQTT broker** reachable over TLS. The project uses [EMQX Cloud Serverless](https://www.emqx.com/en/cloud/serverless-mqtt)
+  (free tier is plenty). Any broker with a publicly trusted certificate works.
+- **ESP-IDF v6.1** to build the firmware.
+- For the PC agent: Python 3.10+ on `PATH`.
+- For the dashboard: a Linux host with Docker, a domain on Cloudflare, Cloudflare Tunnel + Access (free plan works).
+
+## Get started
+
+Follow **[docs/setup.md](docs/setup.md)**. It goes broker → ESP32 → phone → PC → dashboard, and you can stop after any
+step.
+
+## Documentation
+
+| Doc | Covers |
+|---|---|
+| [Setup guide](docs/setup.md) | End-to-end install, step by step |
+| [Firmware](docs/firmware.md) | Building, flashing, how the ESP32 side works |
+| [PC agent](docs/pc-agent.md) | Startup script, power commands, auto-login, the dashboard side channel |
+| [Dashboard](docs/dashboard.md) | Features, Cloudflare setup, deploying, local development |
+| [MQTT protocol](docs/mqtt-protocol.md) | Every topic and payload, command signing, writing your own client |
+| [Security](docs/security.md) | Threat model and what protects what |
+| [Customizing](docs/customizing.md) | Changing topics, workspace folder, startup apps |
+| [Troubleshooting](docs/troubleshooting.md) | PC won't wake, agent offline, dashboard errors |
+
+## Repository layout
+
+```
+firmware/     ESP-IDF project for the ESP32 (C)
+pc/           Windows PC agent (Python) + setup and startup scripts (PowerShell)
+dashboard/    Web dashboard: Express server + React SPA, Dockerfile, compose file
+.github/      CI: dashboard tests, build, deploy over SSH
+docs/         Documentation
+```
+
+## Tests
 
 ```powershell
-$env:IDF_TOOLS_PATH='C:\Espressif'; . C:\esp\v6.1\esp-idf\export.ps1
-cd firmware
-copy main\secrets.example.h main\secrets.h   # first time only, then fill in
-idf.py build
-idf.py -p COM10 flash monitor                # hold BOOT if it says "Wrong boot mode"
+python -m pytest pc\tests                          # PC agent
+cd dashboard; npm ci; npm run lint; npm test        # dashboard
 ```
-
-TLS uses the IDF certificate bundle (EMQX chains to DigiCert Global Root G2), so no CA file to manage.
-
-## PC (one-time)
-
-1. Run `claude` once in `%USERPROFILE%\workspace` and accept the workspace trust prompt.
-2. Run `pc\setup.ps1`: adds the logon startup shortcuts (remote work + power agent), installs `paho-mqtt` + `psutil`,
-   creates `pc\agent-secret.txt` (dashboard command key, gitignored), installs RustDesk as a service (UAC prompt).
-   Needs Python on PATH and `firmware\main\secrets.h` filled in (the power agent reuses its MQTT login).
-3. Auto-login: `winget install Microsoft.Sysinternals.Autologon`, run `Autologon`, enter your Windows password, Enable.
-   Microsoft account: username = account email, **domain empty**, password = account password (not PIN).
-   With a Microsoft account, turn off *Settings > Accounts > Sign-in options > "Only allow Windows Hello sign-in"* first.
-4. Already done: Wake-on-LAN in BIOS + NIC, Fast Startup off.
-
-Normal sleep/hibernate timers stay on: an idle PC goes back to sleep, and you wake it again from the phone.
-Wake from sleep resumes the existing session, so the startup script only runs after a cold boot.
-
-### Power agent
-
-`pc\power-agent.pyw` runs hidden at logon and acts on `wol/desktop`:
-
-| Payload | Does | Wake back with `wake` |
-|---|---|---|
-| `shutdown` | `shutdown /s /f /t 0` (force-closes apps, unsaved work is lost) | yes, cold boot -> auto-login -> startup script |
-| `hibernate` | `shutdown /h` | yes, resumes session |
-| `sleep` | S3 sleep via `SetSuspendState` | yes, resumes session (fastest) |
-
-- Log: `pc\power-agent.log`. Test without acting: `python pc\power-agent.pyw --dry-run` (stop the hidden one first in Task Manager, `pythonw.exe`).
-- Restart it: double-click *Power Agent* in `shell:startup`.
-- It only runs while you are logged in; before auto-login finishes it can't receive commands.
-- It also serves the dashboard: publishes stats/folders/sessions and runs signed `start`/`stop` commands
-  (`pc\pcagent\`). Without `pc\agent-secret.txt` it ignores all dashboard commands. Tests: `python -m pytest pc\tests`.
-
-## Dashboard (pc.givewgun.com)
-
-Phone/laptop page to watch the PC, send power commands, and start/stop Claude Code sessions without RustDesk.
-
-- **New session:** pick a folder under `%USERPROFILE%\workspace` and a permission mode (full access preselected);
-  the agent runs `claude remote-control --name=<folder> --permission-mode <mode>` there in a minimized console.
-  Chat in claude.ai/code as usual. One server per folder (Claude Code's rule): open more chats for a running folder
-  from claude.ai/code, or stop it and start again to change the mode.
-- **Trust:** Remote Control only runs in folders Claude Code trusts at that exact path (a trusted parent doesn't
-  count). Untrusted folders show `(untrusted)` and can't be started; **Trust folder** (two taps) sets
-  `hasTrustDialogAccepted` for that folder in `~/.claude.json`, same as answering the CLI prompt (backup:
-  `~/.claude.json.pc-agent.bak`). Sessions always start with `--spawn same-dir`, so no spawn-mode prompt either.
-- **New folder:** name (letters, digits, `- _ .`, max 64) + optional `git init`; created in workspace and trusted.
-- **Sessions:** every running `claude remote-control`, including the boot-time one; Stop kills that server and its chats.
-- **Security:** Cloudflare Access (one-time PIN, owner's email only) in front; the server also verifies the Access
-  JWT on every `/api` call. Session commands are HMAC-signed with `PC_CMD_SECRET` (VM and PC only), so the shared
-  MQTT login alone can't start anything; the agent signs its replies too, so results can't be faked. Pentest: `docs/superpowers/specs/2026-10-30-pc-dashboard-pentest.md`.
-- **Code:** `dashboard/` (Express + React). `cd dashboard; npm ci; npm test; npm run build`.
-- **Deploy:** push to `main` touching `dashboard/**` runs `.github/workflows/dashboard.yml`: test, build, SSH to the
-  Oracle VM, `/opt/pc-dash/app`, `docker compose -f dashboard/docker-compose.prod.yml up -d --build`. Container
-  `pc-dash` sits on the `tunnel-gateway` network; the `oracle-vm-gateway` tunnel routes `pc.givewgun.com` to it.
-- **GitHub secrets:** `ORACLE_VM_HOST`, `ORACLE_VM_SSH_KEY`, `MQTT_URI`, `MQTT_USER`, `MQTT_PASS`,
-  `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `ALLOWED_EMAIL`, `PC_CMD_SECRET` (= contents of `pc\agent-secret.txt`).
-
-## Phone (IoT MQTT Panel)
-
-Connection (once): your EMQX Serverless address, port `8883`, network protocol **MQTT SSL**, username/password from EMQX.
-
-Add these panels to the dashboard (every button: QoS 1, **retain off**):
-
-| Panel | Name | Topic | Payload / settings |
-|---|---|---|---|
-| Button | Wake | `wol/desktop` | `wake` |
-| Button | Sleep | `wol/desktop` | `sleep` |
-| Button | Hibernate | `wol/desktop` | `hibernate` |
-| Button | Shutdown | `wol/desktop` | `shutdown`; turn on the button's confirm option if your app version has one |
-| LED | ESP32 | `wol/desktop/status` | on = `online`, off = `offline` |
-| LED | PC | `wol/desktop/pc` | on = `online`, off = `offline` |
-
-The *PC* LED goes off right before a power command and back on a few seconds after wake (once the agent reconnects).
-Hard power loss or crash: it flips to `offline` after ~45 s (keepalive timeout).
